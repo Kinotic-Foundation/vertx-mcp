@@ -159,8 +159,6 @@ vertx.deployVerticle(new McpVerticle(8080, transport, mcpServerSpec), ar -> {
 
 ### 4. Complete Examples
 
-> **Important**: The `McpServer` instance contains the actual MCP server implementation and must be kept in scope. The examples below show the recommended approach of passing both the transport and server to the `McpVerticle`, which manages the lifecycle for you. This prevents the server from being garbage collected.
-
 #### Example A: Legacy HTTP+SSE Transport
 
 Here's a complete working example using the legacy HTTP+SSE transport:
