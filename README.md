@@ -97,14 +97,13 @@ var calculatorTool = McpServerFeatures.AsyncToolSpecification.builder()
     })
     .build();
 
-// Build the MCP server
-var mcpServer = McpServer.async(transportProvider)
+// Create the MCP server specification (don't call .build() yet)
+var mcpServerSpec = McpServer.async(transportProvider)
     .serverInfo("calculator-server", "1.0.0")
     .capabilities(ServerCapabilities.builder()
         .tools(true)
         .build())
-    .tools(calculatorTool)
-    .build();
+    .tools(calculatorTool);
 ```
 
 ### 2. Create the Vert.x Transport
@@ -143,37 +142,13 @@ var transport = VertxMcpStreamableServerTransportProvider.builder()
 
 ### 3. Integrate with Your Vert.x Application
 
-#### Option A: Use the Router directly
-
-```java
-import io.vertx.ext.web.Router;
-
-// Get the router from the transport
-Router mcpRouter = transport.getRouter();
-
-// Mount it in your main application router
-Router mainRouter = Router.router(vertx);
-mainRouter.route("/mcp/*").subRouter(mcpRouter);
-
-// Create HTTP server
-vertx.createHttpServer()
-    .requestHandler(mainRouter)
-    .listen(8080, ar -> {
-        if (ar.succeeded()) {
-            System.out.println("Server started on port 8080");
-        } else {
-            System.err.println("Failed to start server: " + ar.cause());
-        }
-    });
-```
-
-#### Option B: Use the provided Verticle
+Use the provided Verticle for easy integration:
 
 ```java
 import io.vertx.ext.mcp.McpVerticle;
 
-// Deploy the MCP verticle
-vertx.deployVerticle(new McpVerticle(8080, transport), ar -> {
+// Deploy the MCP verticle (pass transport and server specification)
+vertx.deployVerticle(new McpVerticle(8080, transport, mcpServerSpec), ar -> {
     if (ar.succeeded()) {
         System.out.println("MCP Verticle deployed successfully");
     } else {
@@ -183,6 +158,8 @@ vertx.deployVerticle(new McpVerticle(8080, transport), ar -> {
 ```
 
 ### 4. Complete Examples
+
+> **Important**: The `McpServer` instance contains the actual MCP server implementation and must be kept in scope. The examples below show the recommended approach of passing both the transport and server to the `McpVerticle`, which manages the lifecycle for you. This prevents the server from being garbage collected.
 
 #### Example A: Legacy HTTP+SSE Transport
 
@@ -252,17 +229,16 @@ public class LegacyMcpServerExample {
             .vertx(vertx)
             .build();
 
-        // Create MCP server
-        var mcpServer = McpServer.async(transport)
+        // Create MCP server specification (don't call .build() yet)
+        var mcpServerSpec = McpServer.async(transport)
             .serverInfo("calculator-server", "1.0.0")
             .capabilities(ServerCapabilities.builder()
                 .tools(true)
                 .build())
-            .tools(calculatorTool)
-            .build();
+            .tools(calculatorTool);
 
-        // Deploy the MCP verticle
-        vertx.deployVerticle(new McpVerticle(8080, transport), ar -> {
+        // Deploy the MCP verticle (pass transport and server specification)
+        vertx.deployVerticle(new McpVerticle(8080, transport, mcpServerSpec), ar -> {
             if (ar.succeeded()) {
                 System.out.println("MCP Server started on port 8080");
                 System.out.println("SSE endpoint: http://localhost:8080/mcp/sse");
@@ -342,17 +318,16 @@ public class StreamableMcpServerExample {
             .keepAliveInterval(Duration.ofSeconds(30))
             .build();
 
-        // Create MCP server
-        var mcpServer = McpServer.async(transport)
+        // Create MCP server specification (don't call .build() yet)
+        var mcpServerSpec = McpServer.async(transport)
             .serverInfo("calculator-server", "1.0.0")
             .capabilities(ServerCapabilities.builder()
                 .tools(true)
                 .build())
-            .tools(calculatorTool)
-            .build();
+            .tools(calculatorTool);
 
-        // Deploy the MCP verticle
-        vertx.deployVerticle(new McpVerticle(8080, transport), ar -> {
+        // Deploy the MCP verticle (pass transport and server specification)
+        vertx.deployVerticle(new McpVerticle(8080, transport, mcpServerSpec), ar -> {
             if (ar.succeeded()) {
                 System.out.println("MCP Server started on port 8080");
                 System.out.println("Streamable HTTP endpoint: http://localhost:8080/mcp");

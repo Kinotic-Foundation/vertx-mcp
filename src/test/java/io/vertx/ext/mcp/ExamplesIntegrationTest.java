@@ -120,18 +120,16 @@ class ExamplesIntegrationTest {
             .vertx(vertx)
             .build();
 
-        // Create MCP server (as shown in README)
-        @SuppressWarnings("unused")
-        var mcpServer = McpServer.async(transport)
+        // Create MCP server specification (as shown in README)
+        var mcpServerSpec = McpServer.async(transport)
             .serverInfo("test-calculator-server", "1.0.0")
             .capabilities(ServerCapabilities.builder()
                 .tools(true)
                 .build())
-            .tools(calculatorTool)
-            .build();
+            .tools(calculatorTool);
 
         // Deploy the MCP verticle (as shown in README)
-        vertx.deployVerticle(new McpVerticle(ssePort, transport), ar -> {
+        vertx.deployVerticle(new McpVerticle(ssePort, transport, mcpServerSpec), ar -> {
             if (ar.succeeded()) {
                 // Test that the server is accessible (verifying it started successfully)
                 HttpClient client = vertx.createHttpClient();
@@ -201,18 +199,16 @@ class ExamplesIntegrationTest {
             .keepAliveInterval(Duration.ofSeconds(30))
             .build();
 
-        // Create MCP server (as shown in README)
-        @SuppressWarnings("unused")
-        var mcpServer = McpServer.async(transport)
+        // Create MCP server specification (as shown in README)
+        var mcpServerSpec = McpServer.async(transport)
             .serverInfo("test-calculator-server", "1.0.0")
             .capabilities(ServerCapabilities.builder()
                 .tools(true)
                 .build())
-            .tools(calculatorTool)
-            .build();
+            .tools(calculatorTool);
 
         // Deploy the MCP verticle (as shown in README)
-        vertx.deployVerticle(new McpVerticle(streamablePort, transport), ar -> {
+        vertx.deployVerticle(new McpVerticle(streamablePort, transport, mcpServerSpec), ar -> {
             if (ar.succeeded()) {
                 // Test that the server is accessible (verifying it started successfully)
                 HttpClient client = vertx.createHttpClient();
@@ -232,46 +228,5 @@ class ExamplesIntegrationTest {
         });
     }
 
-    @Test
-    void testRouterIntegrationExample(VertxTestContext testContext) {
-        // This test replicates the "Option A: Use the Router directly" from the README
-        
-        // Create a transport
-        var transport = VertxMcpSseServerTransportProvider.builder()
-            .baseUrl("http://localhost:" + ssePort)
-            .messageEndpoint("/mcp/message")
-            .sseEndpoint("/mcp/sse")
-            .keepAliveInterval(Duration.ofSeconds(30))
-            .objectMapper(new ObjectMapper())
-            .vertx(vertx)
-            .build();
 
-        // Get the router from the transport (as shown in README)
-        var mcpRouter = transport.getRouter();
-        assertNotNull(mcpRouter);
-
-        // Mount it in your main application router (as shown in README)
-        var mainRouter = Router.router(vertx);
-        mainRouter.route("/mcp/*").subRouter(mcpRouter);
-
-        // Create HTTP server (as shown in README)
-        vertx.createHttpServer()
-            .requestHandler(mainRouter)
-            .listen(ssePort, ar -> {
-                if (ar.succeeded()) {
-                    // Test that the server is accessible
-                    HttpClient client = vertx.createHttpClient();
-                    client.request(HttpMethod.GET, ssePort, "localhost", "/mcp/sse")
-                        .compose(HttpClientRequest::send)
-                        .onSuccess(response -> {
-                            // Just verify we get a response (could be 200, 404, etc.)
-                            assertNotNull(response);
-                            testContext.completeNow();
-                        })
-                        .onFailure(testContext::failNow);
-                } else {
-                    testContext.failNow(ar.cause());
-                }
-            });
-    }
 }
