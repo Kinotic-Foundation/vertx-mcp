@@ -13,6 +13,24 @@ The Vert.x MCP Server provides:
 - **Session Management**: Automatic client session handling with graceful shutdown support
 
 
+## Installation
+
+### Maven
+```xml
+<dependency>
+    <groupId>org.kinotic</groupId>
+    <artifactId>vertx-mcp</artifactId>
+    <version>4.5.0</version>
+</dependency>
+```
+
+### Gradle
+```gradle
+dependencies {
+    implementation 'org.kinotic:vertx-mcp:4.5.0'
+}
+```
+
 ## Quick Start
 
 ### 1. Create an MCP Server
