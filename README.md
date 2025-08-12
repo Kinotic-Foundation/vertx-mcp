@@ -31,6 +31,11 @@ dependencies {
 }
 ```
 
+### Version Compatibility
+
+- **4.5.x versions**: Compatible with Vert.x 4.5.x
+- **5.0.x versions**: Will be compatible with Vert.x 5.x (not yet supported)
+
 ## Quick Start
 
 ### 1. Create an MCP Server
@@ -267,6 +272,12 @@ transport.closeGracefully()
 ## Roadmap
 
 The following features are planned for future releases:
+
+### Vert.x 5 Support
+Support for Vert.x 5.x versions, including:
+- Compatibility with Vert.x 5.x APIs
+- Updated transport implementations for Vert.x 5
+- Performance improvements leveraging new Vert.x 5 features
 
 ### Streamable HTTP Transport
 Support for the new [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http) specification, which replaces the current HTTP+SSE transport. This will provide:

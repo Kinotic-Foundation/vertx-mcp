@@ -24,6 +24,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build with Gradle
+        id: gradle_build
         run: ./gradlew build
 
       - name: Publish to Maven Central with JReleaser
