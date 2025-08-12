@@ -1,0 +1,38 @@
+name: Build and Publish to Maven
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  gradle_build_and_publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: 21
+          gpg-private-key: ${{ secrets.GPG_KEY_NEW }}
+          gpg-passphrase: ${{ secrets.GPG_KEY_PASS_NEW }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build with Gradle
+        run: ./gradlew build
+
+      - name: Publish to Maven Central with JReleaser
+        if: ${{ steps.gradle_build.outcome == 'success' }}
+        run: ./gradlew publish && ./gradlew jreleaserDeploy
+        env:
+          JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.MAVEN_TOKEN_USERNAME }}
+          JRELEASER_MAVENCENTRAL_TOKEN: ${{ secrets.MAVEN_TOKEN_PASSWORD }}
+          JRELEASER_NEXUS2_USERNAME: ${{ secrets.MAVEN_TOKEN_USERNAME }}
+          JRELEASER_NEXUS2_TOKEN: ${{ secrets.MAVEN_TOKEN_PASSWORD }}
+          JRELEASER_GPG_SECRET_KEY: ${{ secrets.GPG_KEY_NEW }}
+          JRELEASER_GPG_PASSPHRASE: ${{ secrets.GPG_KEY_PASS_NEW }}

@@ -1,0 +1,123 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'org.jreleaser' version "1.19.0"
+    id 'io.freefair.lombok' version "8.14"
+}
+
+group 'org.kinotic'
+version '4.5.0-SNAPSHOT'
+
+sourceCompatibility = '21'
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    apacheCommonsVersion='3.18.0'
+    junitVersion='5.12.2'
+    logbackVersion='1.5.18'
+    mcpSdkVersion='0.11.1'
+    vertxVersion='4.5.13'
+}
+
+
+dependencies {
+    api "io.vertx:vertx-core:${vertxVersion}"
+    api "io.vertx:vertx-web:${vertxVersion}"
+
+    api "io.modelcontextprotocol.sdk:mcp:${mcpSdkVersion}"
+
+    implementation "ch.qos.logback:logback-core:${logbackVersion}"
+    implementation "ch.qos.logback:logback-classic:${logbackVersion}"
+
+    implementation "org.apache.commons:commons-lang3:${apacheCommonsVersion}"
+
+    testImplementation "org.junit.jupiter:junit-jupiter-api:${junitVersion}"
+    testImplementation "org.junit.jupiter:junit-jupiter-engine:${junitVersion}"
+}
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
+// Stages files for use by JReleaser
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+
+            from components.java
+
+            pom {
+                name = 'Vert.x MCP Server'
+                description = 'A Vert.x MCP Server built on top of MCP Java SDK'
+                url = 'https://github.com/Kinotic-Foundation/vertx-mcp'
+
+                licenses {
+                    license {
+                        name = 'The Apache License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    }
+                }
+                developers {
+                    developer {
+                        name = 'Kinotic Developers'
+                        email = 'develop@kinotic.org'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/Kinotic-Foundation/vertx-mcp.git'
+                    developerConnection = 'scm:git:https://github.com/Kinotic-Foundation/vertx-mcp.git'
+                    url = 'https://github.com/Kinotic-Foundation/vertx-mcp'
+                }
+            }
+        }
+    }
+    // Here is where JReleaser will look for the staged files
+    repositories {
+        maven {
+            url = layout.buildDirectory.dir('staging-deploy')
+        }
+    }
+}
+
+jreleaser {
+    signing {
+        active = 'ALWAYS'
+        armored = true
+        verify = false
+    }
+    deploy {
+        maven {
+            mavenCentral {
+                'release-deploy' {
+                    active = 'RELEASE'
+                    url = 'https://central.sonatype.com/api/v1/publisher'
+                    stagingRepository('build/staging-deploy')
+                }
+            }
+            nexus2 {
+                'snapshot-deploy' {
+                    active = 'SNAPSHOT'
+                    snapshotUrl = 'https://central.sonatype.com/repository/maven-snapshots/'
+                    applyMavenCentralRules = true
+                    snapshotSupported = true
+                    closeRepository = true
+                    releaseRepository = true
+                    stagingRepository('build/staging-deploy')
+                }
+            }
+        }
+    }
+}
+
+javadoc {
+    // suppress warnings
+    options.addStringOption('Xdoclint:none', '-quiet')
+
+    if(JavaVersion.current().isJava9Compatible()) {
+        options.addBooleanOption('html5', true)
+    }
+}
