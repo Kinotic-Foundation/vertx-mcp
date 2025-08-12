@@ -50,7 +50,7 @@ dependencies {
 
 ### 1. Create an MCP Server
 
-First, create your MCP server using the official Java MCP SDK:
+First, create your MCP server using the official [Java MCP SDK](https://modelcontextprotocol.io/sdk/java/mcp-server):
 
 ```java
 import io.modelcontextprotocol.server.McpServer;
