@@ -30,14 +30,14 @@ The Vert.x MCP Server provides:
 <dependency>
     <groupId>org.kinotic</groupId>
     <artifactId>vertx-mcp</artifactId>
-    <version>4.5.0</version>
+    <version>4.5.1</version>
 </dependency>
 ```
 
 ### Gradle
 ```gradle
 dependencies {
-    implementation 'org.kinotic:vertx-mcp:4.5.0'
+    implementation 'org.kinotic:vertx-mcp:4.5.1'
 }
 ```
 
