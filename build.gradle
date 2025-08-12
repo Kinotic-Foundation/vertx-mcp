@@ -88,6 +88,7 @@ jreleaser {
         active = 'ALWAYS'
         armored = true
         verify = false
+        keyName = providers.environmentVariable('JRELEASER_GPG_KEY_NAME').orElse('')
     }
     deploy {
         maven {
@@ -95,6 +96,7 @@ jreleaser {
                 'release-deploy' {
                     active = 'RELEASE'
                     url = 'https://central.sonatype.com/api/v1/publisher'
+                    applyMavenCentralRules = true
                     stagingRepository('build/staging-deploy')
                 }
             }
