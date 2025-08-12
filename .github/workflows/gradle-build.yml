@@ -27,6 +27,22 @@ jobs:
         id: gradle_build
         run: ./gradlew build
 
+      - name: Check if secret1
+        if: ${{ secrets.MAVEN_TOKEN_USERNAME == '' }}
+        run: echo "The secret MAVEN_TOKEN_USERNAME is blank."
+
+      - name: Check if secret1
+        if: ${{ secrets.MAVEN_TOKEN_PASSWORD == '' }}
+        run: echo "The secret MAVEN_TOKEN_PASSWORD is blank."
+
+      - name: Check if secret1
+        if: ${{ secrets.GPG_KEY_NEW == '' }}
+        run: echo "The secret GPG_KEY_NEW is blank."
+
+      - name: Check if secret1
+        if: ${{ secrets.GPG_KEY_PASS_NEW == '' }}
+        run: echo "The secret GPG_KEY_PASS_NEW is blank."
+
       - name: Publish to Maven Central with JReleaser
         if: ${{ steps.gradle_build.outcome == 'success' }}
         run: ./gradlew publish && ./gradlew jreleaserDeploy
