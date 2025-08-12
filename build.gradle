@@ -88,7 +88,6 @@ jreleaser {
         active = 'ALWAYS'
         armored = true
         verify = false
-        keyName = providers.environmentVariable('JRELEASER_GPG_KEY_NAME').orElse('')
     }
     deploy {
         maven {
