@@ -153,7 +153,7 @@ Router mcpRouter = transport.getRouter();
 
 // Mount it in your main application router
 Router mainRouter = Router.router(vertx);
-mainRouter.mountSubRouter("/mcp", mcpRouter);
+mainRouter.route("/mcp/*").subRouter(mcpRouter);
 
 // Create HTTP server
 vertx.createHttpServer()
