@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +17,7 @@ import io.modelcontextprotocol.spec.McpServerSession;
 import io.modelcontextprotocol.spec.McpServerTransport;
 import io.modelcontextprotocol.spec.McpServerTransportProvider;
 import io.modelcontextprotocol.spec.ProtocolVersions;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
@@ -56,10 +58,12 @@ import reactor.core.publisher.Mono;
  * This implementation is thread-safe and can handle multiple concurrent client
  * connections. It uses {@link ConcurrentHashMap} for session management and Vert.x's
  * non-blocking APIs for message processing and delivery.
+ *
+ * Created By Navíd Mitchell 🤪on 8/10/25
  */
-public class VertxMcpSseServerTransport implements McpServerTransportProvider, VertxMcpTransport {
+public class VertxMcpSseServerTransportProvider implements McpServerTransportProvider, VertxMcpTransport {
 
-    private static final Logger logger = LoggerFactory.getLogger(VertxMcpSseServerTransport.class);
+    private static final Logger logger = LoggerFactory.getLogger(VertxMcpSseServerTransportProvider.class);
 
     /**
      * Event type for JSON-RPC messages sent through the SSE connection.
@@ -99,27 +103,28 @@ public class VertxMcpSseServerTransport implements McpServerTransportProvider, V
     // Session management - stores active client sessions
     private McpServerSession.Factory sessionFactory;
     private final ConcurrentHashMap<String, McpServerSession> sessions = new ConcurrentHashMap<>();
-    
+
     // Shutdown state management
     private volatile boolean isClosing = false;
     private Router router;
-    
-    // Keep-alive timer ID for periodic ping messages
-    private Long keepAliveTimerId;
+
+    // Keep-alive service for periodic ping messages
+    private final KeepAliveService keepAliveService;
 
     @Builder
-    public VertxMcpSseServerTransport(String baseUrl,
-                                      String messageEndpoint,
-                                      String sseEndpoint,
-                                      Duration keepAliveInterval,
-                                      ObjectMapper objectMapper,
-                                      Vertx vertx) {
+    public VertxMcpSseServerTransportProvider(String baseUrl,
+                                              String messageEndpoint,
+                                              String sseEndpoint,
+                                              Duration keepAliveInterval,
+                                              ObjectMapper objectMapper,
+                                              Vertx vertx) {
         this.baseUrl = baseUrl;
         this.messageEndpoint = messageEndpoint != null ? messageEndpoint : DEFAULT_MESSAGE_ENDPOINT;
         this.sseEndpoint = sseEndpoint != null ? sseEndpoint : DEFAULT_SSE_ENDPOINT;
         this.keepAliveInterval = keepAliveInterval != null ? keepAliveInterval : DEFAULT_KEEP_ALIVE_INTERVAL;
         this.objectMapper = objectMapper;
         this.vertx = vertx;
+        this.keepAliveService = new KeepAliveService(vertx, this.keepAliveInterval);
     }
 
     private void initializeRouter() {
@@ -130,46 +135,42 @@ public class VertxMcpSseServerTransport implements McpServerTransportProvider, V
         router.get(sseEndpoint).handler(this::handleSseConnection);
 
         router.post(messageEndpoint).handler(this::handleMessage);
-        
+
         startKeepAlive();
     }
-    
+
     /**
-     * Starts the keep-alive ping mechanism using Vert.x's setPeriodic timer.
+     * Starts the keep-alive ping mechanism using the KeepAliveService.
      * Sends periodic ping messages to all active sessions to prevent idle timeouts.
      */
     private void startKeepAlive() {
-        if (keepAliveInterval != null && !keepAliveInterval.isZero() && !keepAliveInterval.isNegative()) {
-            long intervalMs = keepAliveInterval.toMillis();
-            
-            keepAliveTimerId = vertx.setPeriodic(intervalMs, timerId -> {
-                if (!isClosing && !sessions.isEmpty()) {
-                    logger.trace("Sending keep-alive ping to {} active sessions", sessions.size());
-                    var typeRef = new TypeReference<>() {};
-                    Flux.fromIterable(sessions.values())
-                        .flatMap(session -> session.sendRequest(McpSchema.METHOD_PING, null, typeRef)
-                            .doOnError(e -> logger.warn("Failed to send keep-alive ping to session {}: {}", 
-                                session.getId(), e.getMessage()))
-                            .onErrorComplete()) // Continue with other sessions even if one fails
-                        .subscribe(
-                            result -> {},
-                            error -> logger.error("Error during keep-alive ping", error)
-                        );
-                }
-            });
-            logger.debug("Started keep-alive ping mechanism with interval: {}", keepAliveInterval);
+        keepAliveService.start(v -> sendKeepAlivePing());
+    }
+
+    /**
+     * Send keep-alive ping to all active sessions.
+     */
+    private void sendKeepAlivePing() {
+        if (!isClosing && !sessions.isEmpty()) {
+            logger.trace("Sending keep-alive ping to {} active sessions", sessions.size());
+            var typeRef = new TypeReference<>() {};
+            Flux.fromIterable(sessions.values())
+                .flatMap(session -> session.sendRequest(McpSchema.METHOD_PING, null, typeRef)
+                                           .doOnError(e -> logger.warn("Failed to send keep-alive ping to session {}: {}",
+                                                                       session.getId(), e.getMessage()))
+                                           .onErrorComplete()) // Continue with other sessions even if one fails
+                .subscribe(
+                        result -> {},
+                        error -> logger.error("Error during keep-alive ping", error)
+                );
         }
     }
-    
+
     /**
      * Stops the keep-alive ping mechanism.
      */
     private void stopKeepAlive() {
-        if (keepAliveTimerId != null) {
-            vertx.cancelTimer(keepAliveTimerId);
-            keepAliveTimerId = null;
-            logger.debug("Stopped keep-alive ping mechanism");
-        }
+        keepAliveService.stop();
     }
 
     /**
@@ -237,7 +238,7 @@ public class VertxMcpSseServerTransport implements McpServerTransportProvider, V
         }
 
         HttpServerResponse response = context.response();
-        
+
         response.putHeader(HttpHeaders.CONTENT_TYPE, "text/event-stream")
                 .putHeader(HttpHeaders.CACHE_CONTROL, "no-cache")
                 .putHeader(HttpHeaders.CONNECTION, "keep-alive")
@@ -299,15 +300,15 @@ public class VertxMcpSseServerTransport implements McpServerTransportProvider, V
                    .doOnSuccess(response -> context.response()
                                                    .putHeader(HttpHeaders.CONTENT_TYPE, "application/json")
                                                    .end())
-                    .doOnError(error -> {
-                        logger.error("Error processing message: {}", error.getMessage());
-                        context.response()
-                               .setStatusCode(500)
-                               .putHeader(HttpHeaders.CONTENT_TYPE, "application/json")
-                               .end(new JsonObject()
-                                            .put("error", error.getMessage())
-                                            .encode());
-                    })
+                   .doOnError(error -> {
+                       logger.error("Error processing message: {}", error.getMessage());
+                       context.response()
+                              .setStatusCode(500)
+                              .putHeader(HttpHeaders.CONTENT_TYPE, "application/json")
+                              .end(new JsonObject()
+                                           .put("error", error.getMessage())
+                                           .encode());
+                   })
                    .subscribe();
 
         } catch (IllegalArgumentException | IOException e) {
@@ -321,8 +322,8 @@ public class VertxMcpSseServerTransport implements McpServerTransportProvider, V
         }
     }
 
-    private void sendSseEvent(HttpServerResponse response, String eventType, String data) {
-        response.write("event: "+eventType+"\ndata: "+data+"\n\n");
+    private Future<Void> sendSseEvent(HttpServerResponse response, String eventType, String data) {
+        return response.write("event: "+eventType+"\ndata: "+data+"\n\n");
     }
 
     private class VertxMcpSessionTransport implements McpServerTransport {
@@ -341,12 +342,12 @@ public class VertxMcpSseServerTransport implements McpServerTransportProvider, V
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
-            }).doOnNext(jsonText -> {
-                sendSseEvent(response, MESSAGE_EVENT_TYPE, jsonText);
+            }).flatMap(jsonText -> {
+                return Mono.fromCompletionStage(sendSseEvent(response, MESSAGE_EVENT_TYPE, jsonText).toCompletionStage());
             }).doOnError(e -> {
                 logger.error("Failed to send message to session", e);
                 response.end();
-            }).then();
+            });
         }
 
         @Override

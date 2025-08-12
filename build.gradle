@@ -6,7 +6,7 @@ plugins {
 }
 
 group 'org.kinotic'
-version '4.5.0'
+version '4.5.1-SNAPSHOT'
 
 sourceCompatibility = '21'
 
@@ -19,7 +19,7 @@ ext {
     junitVersion='5.12.2'
     logbackVersion='1.5.18'
     mcpSdkVersion='0.11.1'
-    vertxVersion='4.5.13'
+    vertxVersion='4.5.17'
 }
 
 
@@ -34,13 +34,19 @@ dependencies {
 
     implementation "org.apache.commons:commons-lang3:${apacheCommonsVersion}"
 
-    testImplementation "org.junit.jupiter:junit-jupiter-api:${junitVersion}"
-    testImplementation "org.junit.jupiter:junit-jupiter-engine:${junitVersion}"
+    testImplementation(platform("org.junit:junit-bom:${junitVersion}"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation "io.vertx:vertx-junit5:${vertxVersion}"
 }
 
 java {
     withJavadocJar()
     withSourcesJar()
+}
+
+test {
+    useJUnitPlatform()
 }
 
 // Stages files for use by JReleaser

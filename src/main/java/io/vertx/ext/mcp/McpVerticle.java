@@ -11,6 +11,8 @@ import io.vertx.core.http.HttpServer;
 
 /**
  * Verticle that sets up the MCP server with Vert.x transport
+ * 
+ * Created By Navíd Mitchell 🤪on 8/10/25
  */
 @RequiredArgsConstructor
 public class McpVerticle extends AbstractVerticle {
@@ -20,7 +22,6 @@ public class McpVerticle extends AbstractVerticle {
     private final int mcpPort;
     private final VertxMcpTransport transport;
     private HttpServer httpServer;
-
 
     @Override
     public void start(Promise<Void> startPromise) throws Exception {
