@@ -29,25 +29,37 @@ public class McpVerticle extends AbstractVerticle {
 
     @Override
     public void start(Promise<Void> startPromise) throws Exception {
-        // Build the MCP server from the specification
-        mcpServer = mcpServerSpec.build();
-        
-        // Get the router from the transport (the MCP server manages the transport lifecycle)
-        var router = transport.getRouter();
-        
-        // Create HTTP server
-        httpServer = vertx.createHttpServer();
-        
-        httpServer.requestHandler(router)
-                .listen(mcpPort, ar -> {
-                    if (ar.succeeded()) {
-                        log.info("MCP Transport server started on port {}", mcpPort);
-                        startPromise.complete();
-                    } else {
-                        log.error("Failed to start MCP Transport server", ar.cause());
-                        startPromise.fail(ar.cause());
-                    }
-                });
+        try {
+            log.info("Starting MCP Verticle on port {}", mcpPort);
+            
+            // Build the MCP server from the specification
+            log.info("Building MCP server from specification...");
+            mcpServer = mcpServerSpec.build();
+            log.info("MCP server built successfully");
+            
+            // Get the router from the transport (the MCP server manages the transport lifecycle)
+            log.info("Getting router from transport...");
+            var router = transport.getRouter();
+            log.info("Router obtained successfully");
+            
+            // Create HTTP server
+            log.info("Creating HTTP server...");
+            httpServer = vertx.createHttpServer();
+            
+            httpServer.requestHandler(router)
+                    .listen(mcpPort, ar -> {
+                        if (ar.succeeded()) {
+                            log.info("MCP Transport server started on port {}", mcpPort);
+                            startPromise.complete();
+                        } else {
+                            log.error("Failed to start MCP Transport server", ar.cause());
+                            startPromise.fail(ar.cause());
+                        }
+                    });
+        } catch (Exception e) {
+            log.error("Error during MCP Verticle startup", e);
+            startPromise.fail(e);
+        }
     }
     
     @Override

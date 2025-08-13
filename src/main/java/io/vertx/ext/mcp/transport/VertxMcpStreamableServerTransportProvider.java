@@ -2,10 +2,7 @@ package io.vertx.ext.mcp.transport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpStreamableServerSession;
-import io.modelcontextprotocol.spec.McpStreamableServerTransport;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
+import io.modelcontextprotocol.spec.*;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpMethod;
@@ -18,6 +15,7 @@ import io.vertx.ext.web.handler.CorsHandler;
 import lombok.Builder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -213,7 +211,7 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
         }
 
         // Check for session ID
-        String sessionId = ctx.request().getHeader("MCP-Session-Id");
+        String sessionId = ctx.request().getHeader(HttpHeaders.MCP_SESSION_ID);
         if (sessionId == null) {
             ctx.response()
                .setStatusCode(400)
@@ -232,7 +230,7 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
         }
 
         // Check for resumption with Last-Event-ID
-        String lastEventId = ctx.request().getHeader("Last-Event-ID");
+        String lastEventId = ctx.request().getHeader(HttpHeaders.LAST_EVENT_ID);
         if (lastEventId != null) {
             // Handle stream resumption
             handleStreamResumption(ctx, session, lastEventId);
@@ -248,7 +246,13 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
 
         // Create listening stream
         VertxMcpStreamableSessionTransport sessionTransport = new VertxMcpStreamableSessionTransport(ctx.response());
-        session.listeningStream(sessionTransport);
+        McpStreamableServerSession.McpStreamableServerSessionStream listeningStream
+                = session.listeningStream(sessionTransport);
+
+        ctx.response()
+           .closeHandler(v -> {
+            listeningStream.close();
+        });
     }
 
     /**
@@ -282,20 +286,21 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
             // Parse the JSON-RPC message
             McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(objectMapper, body);
 
-            // Handle different message types
-            if (isInitializeRequest(message)) {
-                handleInitializeRequest(ctx, message);
+            // Is initialization request
+            if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest
+                    && jsonrpcRequest.method().equals(McpSchema.METHOD_INITIALIZE)) {
+
+                McpSchema.InitializeRequest initializeRequest
+                        = objectMapper.convertValue(jsonrpcRequest.params(),
+                                                    new TypeReference<>() {});
+
+                handleInitializeRequest(ctx, jsonrpcRequest.id(), initializeRequest);
             } else {
-                handleRegularMessage(ctx, message);
+                handleMessage(ctx, message);
             }
         } catch (Exception e) {
             log.error("Failed to process POST message", e);
-            ctx.response()
-               .setStatusCode(400)
-               .putHeader("Content-Type", "application/json")
-               .end(new JsonObject()
-                            .put("error", "Invalid message format")
-                            .encode());
+            sendJsonRpcError(ctx, "Invalid message format");
         }
     }
 
@@ -319,7 +324,7 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
             return;
         }
 
-        String sessionId = ctx.request().getHeader("MCP-Session-Id");
+        String sessionId = ctx.request().getHeader(HttpHeaders.MCP_SESSION_ID);
         if (sessionId == null) {
             ctx.response()
                .setStatusCode(400)
@@ -338,28 +343,30 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
         }
 
         // Terminate the session
-        session.delete().subscribe(
+        session.delete().doOnSuccess(
                 v -> {
                     sessions.remove(sessionId);
                     ctx.response()
                        .setStatusCode(200)
                        .putHeader("Content-Type", "text/plain")
                        .end("Session terminated");
-                },
+                })
+                .doOnError(
                 error -> {
                     log.error("Error terminating session {}", sessionId, error);
                     ctx.response()
                        .setStatusCode(500)
                        .putHeader("Content-Type", "text/plain")
                        .end("Error terminating session");
-                }
-        );
+                }).subscribe();
     }
 
     /**
      * Handles initialization requests.
      */
-    private void handleInitializeRequest(RoutingContext ctx, Object message) {
+    private void handleInitializeRequest(RoutingContext ctx,
+                                         Object requestId,
+                                         McpSchema.InitializeRequest initializeRequest) {
         try {
             if (sessionFactory == null) {
                 ctx.response()
@@ -372,20 +379,25 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
             }
 
             // Create a new session using the factory
-            McpStreamableServerSession.McpStreamableServerSessionInit init = sessionFactory.startSession((McpSchema.InitializeRequest) message);
+            McpStreamableServerSession.McpStreamableServerSessionInit init = sessionFactory.startSession(initializeRequest);
             McpStreamableServerSession session = init.session();
 
             sessions.put(session.getId(), session);
 
             // Process initialization
             init.initResult().subscribe(
-                    initResult -> {
+                    initializeResult -> {
                         try {
+                            McpSchema.JSONRPCResponse jsonrpcResponse
+                                    = new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION,
+                                                                    requestId,
+                                                                    initializeResult,
+                                                                    null);
                             // Return response with session ID header
                             ctx.response()
                                .putHeader("Content-Type", "application/json")
                                .putHeader("MCP-Session-Id", session.getId())
-                               .end(objectMapper.writeValueAsString(initResult));
+                               .end(objectMapper.writeValueAsString(jsonrpcResponse));
                         } catch (Exception e) {
                             log.error("Failed to serialize init result", e);
                             ctx.response()
@@ -421,8 +433,8 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
     /**
      * Handles regular JSON-RPC messages (non-initialization).
      */
-    private void handleRegularMessage(RoutingContext ctx, Object message) {
-        String sessionId = ctx.request().getHeader("MCP-Session-Id");
+    private void handleMessage(RoutingContext ctx, Object message) {
+        String sessionId = ctx.request().getHeader(HttpHeaders.MCP_SESSION_ID);
         if (sessionId == null) {
             ctx.response()
                .setStatusCode(400)
@@ -440,32 +452,46 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
             return;
         }
 
-        // Check if this is a request that needs a response stream
-        if (isRequestMessage(message)) {
+        // handle specific type if message
+        if (message instanceof McpSchema.JSONRPCResponse jsonrpcResponse) {
+            session.accept(jsonrpcResponse)
+                    .doOnSuccess(v -> {
+                        ctx.response()
+                           .setStatusCode(202)
+                           .end();
+                    })
+                    .doOnError(error -> {
+                        sendJsonRpcError(ctx, error.getMessage());
+                    }).subscribe();
+        }
+        else if (message instanceof McpSchema.JSONRPCNotification jsonrpcNotification) {
+            session.accept(jsonrpcNotification)
+                          .doOnSuccess(v -> {
+                              ctx.response()
+                                 .setStatusCode(202)
+                                 .end();
+                          })
+                          .doOnError(error -> {
+                              sendJsonRpcError(ctx, error.getMessage());
+                          }).subscribe();
+        }
+        else if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest) {
             // Return SSE stream for requests
             ctx.response()
                .putHeader("Content-Type", "text/event-stream")
                .putHeader("Cache-Control", "no-cache")
-               .putHeader("Connection", "keep-alive");
+               .putHeader("Connection", "keep-alive")
+               .setChunked(true);
 
-            VertxMcpStreamableSessionTransport sessionTransport = new VertxMcpStreamableSessionTransport(ctx.response());
-            session.responseStream((McpSchema.JSONRPCRequest) message, sessionTransport);
-        } else {
-            // Accept notifications and responses with 202 Accepted
-            session.accept((McpSchema.JSONRPCNotification) message).subscribe(
-                    v -> {
-                        ctx.response()
-                           .setStatusCode(202)
-                           .end();
-                    },
-                    error -> {
-                        log.error("Error accepting message", error);
-                        ctx.response()
-                           .setStatusCode(500)
-                           .putHeader("Content-Type", "text/plain")
-                           .end("Error processing message");
-                    }
-            );
+            VertxMcpStreamableSessionTransport st = new VertxMcpStreamableSessionTransport(ctx.response());
+            Mono<Void> stream = session.responseStream(jsonrpcRequest, st);
+            Disposable streamSubscription = stream.onErrorComplete(err -> {
+                sendJsonRpcError(ctx, err.getMessage());
+                return true;
+            }).subscribe();
+
+            ctx.response()
+               .closeHandler(v -> streamSubscription.dispose());
         }
     }
 
@@ -505,32 +531,15 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
                 .subscribe();
     }
 
-    /**
-     * Checks if a message is an initialization request.
-     */
-    private boolean isInitializeRequest(Object message) {
-        try {
-            if (message instanceof McpSchema.JSONRPCRequest request) {
-                return McpSchema.METHOD_INITIALIZE.equals(request.method());
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
 
-    /**
-     * Checks if a message is a request (has an ID).
-     */
-    private boolean isRequestMessage(Object message) {
-        try {
-            if (message instanceof McpSchema.JSONRPCRequest) {
-                return true;
-            }
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
+    private Future<Void> sendJsonRpcError(RoutingContext ctx, String message) {
+        log.trace("sendJsonRpcError {}", message);
+        return ctx.response()
+           .setStatusCode(400)
+           .putHeader("Content-Type", "application/json")
+           .end(new JsonObject()
+                        .put("error", new JsonObject().put("message", message))
+                        .encode());
     }
 
     /**

@@ -96,7 +96,6 @@ public class VertxMcpSseServerTransportProvider implements McpServerTransportPro
     private final String baseUrl;
     private final String messageEndpoint;
     private final String sseEndpoint;
-    private final Duration keepAliveInterval;
     private final Vertx vertx;
     private final ObjectMapper objectMapper;
 
@@ -132,10 +131,11 @@ public class VertxMcpSseServerTransportProvider implements McpServerTransportPro
         this.baseUrl = baseUrl;
         this.messageEndpoint = messageEndpoint != null ? messageEndpoint : DEFAULT_MESSAGE_ENDPOINT;
         this.sseEndpoint = sseEndpoint != null ? sseEndpoint : DEFAULT_SSE_ENDPOINT;
-        this.keepAliveInterval = keepAliveInterval != null ? keepAliveInterval : DEFAULT_KEEP_ALIVE_INTERVAL;
         this.objectMapper = objectMapper;
         this.vertx = vertx;
-        this.keepAliveService = new KeepAliveService(vertx, this.keepAliveInterval);
+        this.keepAliveService
+                = new KeepAliveService(vertx, keepAliveInterval != null
+                ? keepAliveInterval : DEFAULT_KEEP_ALIVE_INTERVAL);
     }
 
     private void initializeRouter() {
