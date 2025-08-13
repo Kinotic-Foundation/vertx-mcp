@@ -59,6 +59,14 @@ public class VertxMcpStreamableServerTransportProvider implements McpStreamableS
                                                      boolean disallowDelete,
                                                      Vertx vertx,
                                                      Duration keepAliveInterval) {
+        // Validate required arguments
+        if (objectMapper == null) {
+            throw new IllegalArgumentException("objectMapper cannot be null");
+        }
+        if (vertx == null) {
+            throw new IllegalArgumentException("vertx cannot be null");
+        }
+        
         this.objectMapper = objectMapper;
         this.mcpEndpoint = mcpEndpoint != null ? mcpEndpoint : "/mcp";
         this.disallowDelete = disallowDelete;

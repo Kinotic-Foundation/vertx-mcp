@@ -118,6 +118,17 @@ public class VertxMcpSseServerTransportProvider implements McpServerTransportPro
                                               Duration keepAliveInterval,
                                               ObjectMapper objectMapper,
                                               Vertx vertx) {
+        // Validate required arguments
+        if (baseUrl == null) {
+            throw new IllegalArgumentException("baseUrl cannot be null");
+        }
+        if (objectMapper == null) {
+            throw new IllegalArgumentException("objectMapper cannot be null");
+        }
+        if (vertx == null) {
+            throw new IllegalArgumentException("vertx cannot be null");
+        }
+        
         this.baseUrl = baseUrl;
         this.messageEndpoint = messageEndpoint != null ? messageEndpoint : DEFAULT_MESSAGE_ENDPOINT;
         this.sseEndpoint = sseEndpoint != null ? sseEndpoint : DEFAULT_SSE_ENDPOINT;
